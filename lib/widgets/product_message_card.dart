@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'dart:math';
 
 class ProductMessageCard extends StatelessWidget {
@@ -6,7 +7,7 @@ class ProductMessageCard extends StatelessWidget {
   final Function(String) onDetailsPressed;
 
   const ProductMessageCard({
-    Key? key, 
+    Key? key,
     required this.product,
     required this.onDetailsPressed,
   }) : super(key: key);
@@ -24,89 +25,73 @@ class ProductMessageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 180, // Fixed width for consistent card size
-      margin: EdgeInsets.only(right: 12),
+      width: 140,
+      margin: EdgeInsets.only(right: 8),
       child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Product Image
-            AspectRatio(
-              aspectRatio: 1,
-              child: ClipRRect(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-                child: product['imageUrl']?.isNotEmpty == true
-                    ? Image.network(
-                        product['imageUrl'],
-                        fit: BoxFit.cover,
-                      )
-                    : Container(
-                        color: Colors.grey[100],
-                        child: Icon(Icons.image_outlined, color: Colors.grey[400]),
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Image.network(
+                  product['imageUrl'] ?? '',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[200],
+                      child: Center(
+                        child: Icon(
+                          Icons.image_not_supported_outlined,
+                          color: Colors.grey[400],
+                        ),
                       ),
-              ),
-            ),
-            
-            // Rating Stars
-            Padding(
-              padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
-                children: List.generate(5, (index) => 
-                  Icon(
-                    index < 4 ? Icons.star : Icons.star_border,
-                    size: 16,
-                    color: Colors.amber,
-                  )
+                    );
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Shimmer.fromColors(
+                      baseColor: Colors.grey[300]!,
+                      highlightColor: Colors.grey[100]!,
+                      child: Container(
+                        color: Colors.white,
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
-
-            // Product Name
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                product['name'],
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                maxLines: 2,
+              SizedBox(height: 8),
+              Text(
+                product['name'] ?? 'Unknown',
+                style: TextStyle(fontWeight: FontWeight.bold),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-
-            // Price Range
-            Padding(
-              padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
-              child: Text(
-                _getPriceRange(),
+              Text(
+                'Price not available',
                 style: TextStyle(
-                  color: Theme.of(context).primaryColor,
-                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[600],
+                  fontSize: 12,
                 ),
               ),
-            ),
-
-            // View Product Button
-            Padding(
-              padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: ElevatedButton(
-                onPressed: () => onDetailsPressed(product['name']),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 32),
-                  padding: EdgeInsets.zero,
-                  backgroundColor: Colors.blue[700],
-                  foregroundColor: Colors.white,
+              Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => onDetailsPressed(product['name']),
+                  child: Text('View Product'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                  ),
                 ),
-                child: Text('View Product', style: TextStyle(fontSize: 13)),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../main.dart';
+import '../pages/chat_page.dart';
+import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -122,7 +123,12 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   Text("Don't have an account?"),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => SignupPage()),
+                      );
+                    },
                     child: Text('Sign up'),
                   ),
                 ],
@@ -143,7 +149,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => ChatScreen()),
+        MaterialPageRoute(builder: (context) => ChatPage()),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -159,7 +165,7 @@ class _LoginPageState extends State<LoginPage> {
       await _authService.signInWithGoogle();
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => ChatScreen()),
+        MaterialPageRoute(builder: (context) => ChatPage()),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
