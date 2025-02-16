@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/chat_provider.dart';
@@ -11,6 +12,8 @@ import '../pages/order_history_page.dart';
 import '../providers/cart_provider.dart';
 import '../pages/admin/product_management_page.dart';
 import '../models/user_role.dart';
+import '../styles/app_theme.dart';
+import '../widgets/hover_effect.dart';
 
 class ChatPage extends StatefulWidget {
   @override
@@ -19,436 +22,633 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _updateScrollController = ScrollController();
   String selectedMarket = 'Mile 12';
+  final List<String> hintTexts = [
+    'Buy foodstuff from Mile 12 Market',
+    'I need ingredients for jollof rice',
+    'Get me fresh tomatoes and pepper',
+    'Compare prices of rice in different markets',
+    'Find the best deals on palm oil',
+    'Order fresh fish from Mile 12',
+  ];
+  int currentHintIndex = 0;
+
+  // Add new list for update messages
+  final List<String> updateMessages = [
+    'Weekend Deliveries from Mile 12, Oyingbo, and Kara markets',
+    'Shop in Groups for wholesale discounts',
+  ];
+  int currentUpdateIndex = 0;
+
+  // Add state variable to track input
+  String _inputText = '';
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    // Add listener to controller
+    _controller.addListener(() {
+      setState(() {
+        _inputText = _controller.text;
+      });
+    });
+    _startHintAnimation();
+    _startUpdateAnimation(); // Add this
+  }
+
+  void _startHintAnimation() {
+    Future.delayed(Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() {
+          currentHintIndex = (currentHintIndex + 1) % hintTexts.length;
+        });
+        _startHintAnimation();
+      }
+    });
+  }
+
+  // Modify _startUpdateAnimation method
+  void _startUpdateAnimation() {
+    if (!mounted) return;
+
+    // Reset scroll position first
+    if (_updateScrollController.hasClients) {
+      _updateScrollController.jumpTo(0);
+    }
+
+    // Add slight delay before starting scroll
+    Future.delayed(Duration(milliseconds: 500), () {
+      if (_updateScrollController.hasClients && mounted) {
+        _updateScrollController.animateTo(
+          _updateScrollController.position.maxScrollExtent,
+          duration: Duration(seconds: 5),
+          curve: Curves.linear,
+        ).then((_) {
+          // After scrolling completes, wait a bit then show next message
+          Future.delayed(Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                currentUpdateIndex = (currentUpdateIndex + 1) % updateMessages.length;
+              });
+              _startUpdateAnimation();
+            }
+          });
+        });
+      } else {
+        // If no clients yet, try again shortly
+        Future.delayed(Duration(milliseconds: 100), _startUpdateAnimation);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final chatProvider = Provider.of<ChatProvider>(context);
-    final bool hasMessages = chatProvider.messageHistory.isNotEmpty;
-
     return Scaffold(
-      body: Center(
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 700),
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: hasMessages
-                    ? _buildChatList(chatProvider)
-                    : _buildWelcomeScreen(),
+      backgroundColor: AppTheme.darkBackground,
+      appBar: _buildAppBar(),
+      body: Consumer<ChatProvider>(
+        builder: (context, chatProvider, _) => _buildBody(chatProvider),
+      ),
+    );
+  }
+
+  Widget _buildBody(ChatProvider chatProvider) {
+    return AnimatedSwitcher(
+      duration: Duration(milliseconds: 300),
+      child: chatProvider.isLoadingResponse
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation(Colors.white70),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Getting market prices...',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
               ),
-              hasMessages 
-                  ? _buildChatInputField() 
-                  : _buildWelcomeInputField(),
-            ],
-          ),
-        ),
-      ),
+            )
+          : chatProvider.messageHistory.isEmpty
+              ? _buildLovableLikeWelcome()
+              : _buildChatView(chatProvider),
     );
   }
 
-  Widget _buildChatList(ChatProvider chatProvider) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: chatProvider.messageHistory.length + 
-                 (chatProvider.isLoadingResponse ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index < chatProvider.messageHistory.length) {
-          return ChatBubble(message: chatProvider.messageHistory[index]);
-        }
-        return _buildLoadingIndicator();
-      },
-    );
-  }
-
-  Widget _buildGreeting(User? user) {
-    if (user != null) {
-      return Text(
-        'Hi there, ${user.displayName ?? 'User'}.\nWhat can I do for you?',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
-        textAlign: TextAlign.center,
-      );
-    }
-    return Text(
-      'Hi there,\nhow can I help you today?',
-      style: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  Widget _buildSuggestionCard({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 140,
-        height: 140,
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[800],
-              ),
+  Widget _buildLovableLikeWelcome() {
+    return SingleChildScrollView(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 1280),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: MediaQuery.of(context).size.width > 768 ? 32 : 16,
+              vertical: 64,
             ),
-            Spacer(),
-            Icon(icon, size: 24, color: Colors.grey[700]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSuggestionCards() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSuggestionCard(
-              icon: Icons.shopping_cart_outlined,
-              title: 'Buy Foodstuff\nfrom Markets',
-              onTap: () => _controller.text = 'I want to buy foodstuff from $selectedMarket market',
-            ),
-            SizedBox(width: 12),
-            _buildSuggestionCard(
-              icon: Icons.calendar_today_outlined,
-              title: 'Schedule my\nMarket Runs',
-              onTap: () => _controller.text = 'Help me schedule my market runs',
-            ),
-            SizedBox(width: 12),
-            _buildSuggestionCard(
-              icon: Icons.trending_up_outlined,
-              title: 'Check latest\nprice updates',
-              onTap: () => _controller.text = 'What are the latest price updates?',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.black12)),
-      ),
-      child: Row(
-        children: [
-          Image.asset('assets/qwen_logo.png', height: 32),
-          Spacer(),
-          AdminMenu(),
-          Consumer<CartProvider>(
-            builder: (context, cart, child) => Stack(
-              clipBehavior: Clip.none,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton(
-                  icon: Icon(Icons.shopping_cart_outlined),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => CartPage()),
-                    );
-                  },
+                // Logo above updates
+                Padding(
+                  padding: EdgeInsets.only(bottom: 24),
+                  child: Image.asset(
+                    'assets/OjaChat Logo.png',
+                    height: 48,
+                    width: 48,
+                  ),
                 ),
-                if (cart.items.isNotEmpty)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      padding: EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
+                
+                // New badge
+                Container(
+                  constraints: BoxConstraints(maxWidth: 320),
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.campaign, size: 16, color: Colors.white70),
                       ),
-                      child: Text(
-                        '${cart.items.length}',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                      SizedBox(width: 12),
+                      Flexible(
+                        child: AnimatedSwitcher(
+                          duration: Duration(milliseconds: 500),
+                          child: SingleChildScrollView(
+                            key: ValueKey<int>(currentUpdateIndex),
+                            controller: _updateScrollController,
+                            scrollDirection: Axis.horizontal,
+                            physics: NeverScrollableScrollPhysics(), // Prevent manual scrolling
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minWidth: 200), // Ensure minimum width for scrolling
+                              child: Text(
+                                updateMessages[currentUpdateIndex],
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.visible,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                ),
+                SizedBox(height: 32),
+
+                // Heading
+                Text('Market runs, powered by AI',
+                  style: AppTheme.headingStyle,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 16),
+                
+                Text('Ojachat is your personal shopper for market runs',
+                  style: AppTheme.subtitleStyle,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 48),
+
+                // Input area with exact Lovable styling
+                _buildLovableInput(),
+                
+                SizedBox(height: 32),
+                
+                // Quick access suggestions
+                _buildQuickAccessSuggestions(),
               ],
             ),
           ),
-          SizedBox(width: 8),
-          StreamBuilder<User?>(
-            stream: AuthService().authStateChanges,
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                return PopupMenuButton(
-                  icon: CircleAvatar(
-                    radius: 16,
-                    backgroundImage: NetworkImage(snapshot.data?.photoURL ?? ''),
-                    backgroundColor: Colors.brown,
-                  ),
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      child: ListTile(
-                        leading: Icon(Icons.receipt_long_outlined),
-                        title: Text('Order History'),
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => OrderHistoryPage()),
-                        );
-                      },
-                    ),
-                    PopupMenuItem(
-                      child: ListTile(
-                        leading: Icon(Icons.logout),
-                        title: Text('Logout'),
-                      ),
-                      onTap: () async {
-                        await AuthService().signOut();
-                      },
-                    ),
-                  ],
-                );
-              }
-              return ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => LoginPage()),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLovableInput() {
+    return Container(
+      width: MediaQuery.of(context).size.width > 768 ? 720 : double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20), // Increased vertical padding
+      decoration: AppTheme.enhancedInputDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Text input with animated hints
+          TextField(
+            controller: _controller,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+            minLines: 2, // Added this
+            maxLines: 4, // Added this
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 8), // Added vertical padding
+              hintText: _inputText.isEmpty ? hintTexts[currentHintIndex] : null,
+              hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 14,
+              ),
+            ),
+          ),
+
+          SizedBox(height: 12),
+
+          // Bottom row with icons and actions
+          Row(
+            children: [
+              // Left side icons
+              IconButton(
+                icon: Icon(Icons.image_outlined, 
+                  color: Colors.white70,
+                  size: 20,
                 ),
-                child: Text('Login'),
-              );
-            },
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: Icon(Icons.mic_outlined,
+                  color: Colors.white70,
+                  size: 20,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () {},
+              ),
+              
+              Spacer(),
+              
+              // Language selector
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.language,
+                    color: Colors.white70,
+                    size: 18,
+                  ),
+                  SizedBox(width: 4),
+                  DropdownButton<String>(
+                    value: 'English',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                    underline: SizedBox(),
+                    icon: Icon(Icons.arrow_drop_down, 
+                      color: Colors.white70,
+                      size: 18,
+                    ),
+                    items: ['English', 'Hausa', 'Igbo', 'Yoruba']
+                      .map((lang) => DropdownMenuItem(
+                        value: lang,
+                        child: Text(lang),
+                      )).toList(),
+                    onChanged: (value) {},
+                  ),
+                ],
+              ),
+              
+              SizedBox(width: 12),
+              
+              // Send button
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _inputText.isEmpty 
+                    ? Colors.white.withOpacity(0.1) 
+                    : AppTheme.primaryColor,
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.arrow_upward,
+                    color: _inputText.isEmpty 
+                      ? Colors.white38 
+                      : Colors.white,
+                    size: 16,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: _inputText.isEmpty ? null : () async {
+                    if (_inputText.isNotEmpty) {
+                      final chatProvider = context.read<ChatProvider>();
+                      await chatProvider.sendMessage(_inputText);
+                      _controller.clear();
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildWelcomeScreen() {
-    return Column(
-      children: [
-        const SizedBox(height: 120),
-        StreamBuilder<User?>(
-          stream: AuthService().authStateChanges,
-          builder: (context, snapshot) {
-            return _buildGreeting(snapshot.data);
-          },
+  AppBar _buildAppBar() {
+  final isDesktop = MediaQuery.of(context).size.width > 768;
+  
+  return AppBar(
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    leadingWidth: 200,
+    leading: Padding(
+      padding: EdgeInsets.only(left: 16),
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/OjaChat Logo.png',
+            height: 24,  // Increased from 24
+            width: 24,   // Increased from 24
+          ),
+          SizedBox(width: 12),
+          Text('OjaChat',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      if (!isDesktop) // Only show in mobile view
+        IconButton(
+          icon: Icon(Icons.menu),
+          onPressed: () => _showMobileMenu(context),
         ),
-        const SizedBox(height: 24),
-        _buildSuggestionCards(),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Shimmer.fromColors(
-        baseColor: Colors.grey[300]!,
-        highlightColor: Colors.grey[100]!,
-        child: Container(
-          width: double.infinity,
-          height: 50.0,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
+      if (isDesktop) ...[
+        TextButton(
+          onPressed: () {},
+          child: HoverEffect(
+            child: Text('Support', style: TextStyle(color: Colors.white70)),
           ),
         ),
-      ),
-    );
-  }
+        HoverEffect(
+          child: TextButton(
+            onPressed: () {},
+            child: HoverEffect(
+              child: Text('Blog', style: TextStyle(color: Colors.white70)),
+            ),
+          ),
+        ),
+        HoverEffect(
+          child: IconButton(
+            icon: FaIcon(FontAwesomeIcons.twitter, size: 18),
+            color: Colors.white70,
+            onPressed: () {},
+          ),
+        ),
+        HoverEffect(
+          child: IconButton(
+            icon: FaIcon(FontAwesomeIcons.discord, size: 18),
+            color: Colors.white70,
+            onPressed: () {},
+          ),
+        ),
+        SizedBox(width: 8),
+        HoverEffect(child: _buildUserMenu()),
+        SizedBox(width: 16),
+      ],
+    ],
+  );
+}
 
-  Widget _buildChatInputField() {
+  Widget _buildChatView(ChatProvider chatProvider) {
+  print('Building chat view:');
+  print('Message history length: ${chatProvider.messageHistory.length}');
+  
+  return Column(
+    children: [
+      Expanded(
+        child: ListView.builder(
+          padding: EdgeInsets.all(16),
+          itemCount: chatProvider.messageHistory.length,
+          itemBuilder: (context, index) {
+            final message = chatProvider.messageHistory[index];
+            print('Message $index:');
+            print('- Role: ${message['role']}');
+            print('- Content: ${message['content']}');
+            print('- Products: ${message['products']}');
+            
+            return ChatBubble(
+              message: message['content'],
+              isUser: message['role'] == 'user',
+              products: message['products'],
+            );
+          },
+        ),
+      ),
+      _buildInputArea(),
+    ],
+  );
+}
+
+  Widget _buildInputArea() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(24),
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
       ),
       child: Row(
         children: [
+          IconButton(
+            icon: Icon(Icons.mic),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.attach_file),
+            onPressed: () {},
+          ),
           Expanded(
             child: TextField(
               controller: _controller,
               decoration: InputDecoration(
-                hintText: 'Ask me something...',
+                hintText: hintTexts[currentHintIndex],
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16),
               ),
+              onSubmitted: (value) async {
+                if (value.isNotEmpty) {
+                  final chatProvider = context.read<ChatProvider>();
+                  await chatProvider.sendMessage(value);
+                  _controller.clear();
+                }
+              },
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.send),
-            onPressed: () {
-              if (_controller.text.trim().isNotEmpty) {
-                Provider.of<ChatProvider>(context, listen: false)
-                    .sendMessage(_controller.text);
-                _controller.clear();
-              }
-            },
-          ),
+          _buildLanguageDropdown(),
         ],
       ),
     );
   }
 
-  Widget _buildWelcomeInputField() {
-    return Container(
-      margin: EdgeInsets.all(16),
-      height: 120,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Column(
+  Widget _buildLanguageDropdown() {
+    return DropdownButton<String>(
+      value: 'English',
+      icon: Row(
         children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            height: 60,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: 'Ask whatever you want...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      filled: false,
-                      hintStyle: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                      ),
-                    ),
-                    maxLines: 1,
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: DropdownButton<String>(
-                    value: selectedMarket,
-                    underline: SizedBox(),
-                    icon: Icon(Icons.expand_more, size: 16),
-                    isDense: true,
-                    menuMaxHeight: 200,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey[800],
-                    ),
-                    items: [
-                      'Mile 12',
-                      'KETU',
-                      'Ounje Eko Mushin',
-                      'Oyingbo',
-                      'Makoko',
-                    ].map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() => selectedMarket = newValue);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            height: 40,
-            padding: EdgeInsets.only(left: 8, right: 8, top: 4),
-            child: Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () {},
-                  icon: Icon(Icons.mic, size: 10),
-                  label: Text(
-                    'Voice to Cart',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size(0, 32),
-                    side: BorderSide(color: Colors.grey[300]!),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-                Spacer(),
-                Text('0/1000', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(Icons.send_rounded, size: 20),
-                  onPressed: () {
-                    if (_controller.text.trim().isNotEmpty) {
-                      Provider.of<ChatProvider>(context, listen: false)
-                          .sendMessage(_controller.text);
-                      _controller.clear();
-                    }
-                  },
-                  color: Theme.of(context).primaryColor,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          Icon(Icons.language),
+          Icon(Icons.arrow_drop_down),
         ],
       ),
+      items: ['English', 'Hausa', 'Igbo', 'Yoruba']
+          .map((lang) => DropdownMenuItem(
+                value: lang,
+                child: Text(lang),
+              ))
+          .toList(),
+      onChanged: (value) {
+        // Implement language change
+      },
     );
+  }
+
+  Widget _buildUserMenu() {
+    return PopupMenuButton(
+      child: CircleAvatar(
+        backgroundColor: Theme.of(context).primaryColor,
+        child: Icon(Icons.person),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem(child: Text('Profile')),
+        PopupMenuItem(child: Text('Settings')),
+        PopupMenuItem(child: Text('Logout')),
+      ],
+    );
+  }
+
+  void _showMobileMenu(BuildContext context) {
+  final authService = Provider.of<AuthService>(context, listen: false);
+  
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppTheme.darkBackground,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => Provider<AuthService>.value(
+      value: authService, // Pass the existing AuthService
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.person_outline, color: Colors.white70),
+              title: Text('Profile', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                // Handle profile action
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings_outlined, color: Colors.white70),
+              title: Text('Settings', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                // Handle settings action
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.logout_outlined, color: Colors.white70),
+              title: Text('Sign Out', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                await authService.signOut();
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+  Widget _buildMobileMenuItem(IconData icon, String text, {VoidCallback? onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70),
+      title: Text(text, style: TextStyle(color: Colors.white)),
+      onTap: onTap ?? () => Navigator.pop(context),
+    );
+  }
+
+  Widget _buildLanguageSelector() {
+    return ListTile(
+      leading: Icon(Icons.language),
+      title: Text('Language'),
+      trailing: DropdownButton<String>(
+        value: 'English',
+        items: ['English', 'Hausa', 'Igbo', 'Yoruba']
+            .map((lang) => DropdownMenuItem(
+                  value: lang,
+                  child: Text(lang),
+                ))
+            .toList(),
+        onChanged: (value) {},
+      ),
+    );
+  }
+
+  Widget _buildQuickAccessSuggestions() {
+    final suggestions = [
+      'Buy ingredients for soup',
+      'Get fresh vegetables',
+      'Price of rice',
+      'Compare tomato prices',
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: suggestions.map((text) => Padding(
+          padding: EdgeInsets.only(right: 12),
+          child: HoverEffect(
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        )).toList(),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(() {});
+    _updateScrollController.dispose();
+    _controller.dispose();
+    super.dispose();
   }
 }
 
@@ -483,4 +683,28 @@ class AdminMenu extends StatelessWidget {
       },
     );
   }
+}
+
+// Example of creating a message with product data
+final productData = {
+  'imageUrl': 'https://example.com/tomatoes.jpg',
+  'name': 'Fresh Tomatoes',
+  'price': 500.0,
+  'unit': 'kg',
+};
+
+// Example of creating a message with product data
+void exampleChatBubble() {
+  final productData = {
+    'imageUrl': 'https://example.com/tomatoes.jpg',
+    'name': 'Fresh Tomatoes',
+    'price': 500.0,
+    'unit': 'kg',
+  };
+
+  ChatBubble(
+    message: "The current price for tomatoes at Mile 12 market is about N500 per kilogram.",
+    isUser: false,
+    products: [productData],
+  );
 }

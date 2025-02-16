@@ -4,64 +4,95 @@ class ProductCard extends StatelessWidget {
   final String imageUrl;
   final String name;
   final double price;
-  final String? unit;
+  final String unit;
   final VoidCallback onTap;
   final bool isLoading;
 
   const ProductCard({
-    Key? key,
-    required this.imageUrl,
-    required this.name,
+    this.imageUrl = '',  // Default empty string
+    required this.name, 
     required this.price,
-    this.unit,
+    this.unit = 'unit',  // Default unit
     required this.onTap,
     this.isLoading = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
+    print('Building ProductCard:');
+    print('Name: $name');
+    print('Price: $price');
+    print('Unit: $unit');
+    print('ImageUrl: $imageUrl');
+
     return Card(
-      margin: const EdgeInsets.only(right: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withOpacity(0.1)),
+      ),
       child: Container(
-        width: 100,
-        padding: const EdgeInsets.all(8),
+        width: 180,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (imageUrl.isNotEmpty)
-              Image.network(
-                imageUrl,
-                height: 40,
-                width: 40,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(Icons.error),
-              )
-            else
-              Container(
-                height: 40,
-                width: 40,
-                color: Colors.grey[200],
-                child: Icon(Icons.image_not_supported, size: 20),
+            // Image section with fallback
+            Container(
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                color: Colors.grey[800], // Fallback background color
               ),
-            const SizedBox(height: 4),
-            Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '₦${price.toStringAsFixed(2)}',
-              style: const TextStyle(color: Colors.green),
-            ),
-            if (unit != null)
-              Text(
-                'per $unit',
-                style: const TextStyle(fontSize: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                child: imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          print('Network image error: $error');
+                          return Image.asset(
+                            'assets/issue 1.png', // Fallback image
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        'assets/issue 1a.png', // Default image when URL is empty
+                        fit: BoxFit.cover,
+                      ),
               ),
+            ),
+
+            // Product details with null checks
+            Padding(
+              padding: EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isNotEmpty ? name : 'Product Name',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '₦${price.toStringAsFixed(2)} / ${unit.isNotEmpty ? unit : 'unit'}',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
-} 
+}

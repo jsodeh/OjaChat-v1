@@ -29,13 +29,11 @@ class FirebaseService {
 
   Future<List<Map<String, dynamic>>> queryProducts(String query) async {
     try {
-      final keywords = query.toLowerCase()
-          .replaceAll(RegExp(r'[^\w\s]'), '')
-          .split(' ')
-          .where((word) => word.isNotEmpty)
-          .toList();
-
+      final keywords = query.toLowerCase().split(' ');
+      
       if (keywords.isEmpty) return [];
+
+      print('Querying with keywords: $keywords'); // Debug print
 
       final querySnapshot = await _firestore
           .collection('products')
@@ -43,10 +41,25 @@ class FirebaseService {
           .limit(5)
           .get();
 
-      return querySnapshot.docs
-          .map((doc) => {'id': doc.id, ...doc.data()})
-          .toList();
+      final products = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        print('Raw product data: $data'); // Debug print
+        
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? 'Unknown Product',
+          'price': data['price'] ?? 0.0,
+          'unit': data['unit'] ?? 'unit',
+          'imageUrl': data['imageUrl'] ?? '',
+          // Add any other fields you need
+        };
+      }).toList();
+
+      print('Processed products: $products'); // Debug print
+      return products;
+      
     } catch (e) {
+      print('Error querying products: $e');
       return [];
     }
   }

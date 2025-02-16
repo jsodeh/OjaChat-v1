@@ -21,51 +21,53 @@ class ChatProvider extends ChangeNotifier {
     };
   }
 
-  void sendMessage(String message) async {
+  Future<void> sendMessage(String message) async {
     if (message.trim().isEmpty) return;
 
-    _messageHistory.add(_createMessage('user', message));
-    notifyListeners();
-
-    _isLoadingResponse = true;
-    notifyListeners();
-
     try {
-      // First check if OpenAI is configured
-      if (!_openAIService.isConfigured) {
-        throw Exception('OpenAI API is not configured');
-      }
+      // Add user message
+      _messageHistory.add({
+        'role': 'user',
+        'content': message,
+        'products': [],
+      });
+      notifyListeners();
 
-      final products = await _firebaseService.queryProducts(message);
-      final recentMessages = _messageHistory
-          .where((msg) => msg['timestamp'] != null)
-          .toList()
-          .reversed
-          .take(5)
-          .toList()
-          .reversed
-          .toList();
+      _isLoadingResponse = true;
+      notifyListeners();
 
+      // Extract product keywords from message
+      final keywords = message.toLowerCase().split(' ');
+      
+      // Query products before AI response
+      final matchingProducts = await _firebaseService.queryProducts(message);
+      print('Found matching products: $matchingProducts'); // Debug print
+
+      // Get AI response
       final response = await _openAIService.sendMessage(
-        message,
-        products,
-        previousMessages: recentMessages,
+        message, 
+        matchingProducts,
+        previousMessages: _messageHistory,
       );
 
-      _messageHistory.add(_createMessage('assistant', response, products));
+      // Add assistant message with products
+      _messageHistory.add({
+        'role': 'assistant',
+        'content': response,
+        'products': matchingProducts, // Include matched products
+      });
+
     } catch (e) {
-      print('Chat Provider Error: $e');  // Add error logging
-      String errorMessage = 'Sorry, I encountered an error. Please try again.';
-      
-      if (e.toString().contains('API is not configured')) {
-        errorMessage = 'Chat service is not properly configured. Please contact support.';
-      }
-      
-      _messageHistory.add(_createMessage('assistant', errorMessage));
-    } finally {
-      _isLoadingResponse = false;
-      notifyListeners();
+      print('Error in sendMessage: $e');
+      _messageHistory.add({
+        'role': 'assistant',
+        'content': 'Sorry, I encountered an error. Please try again.',
+        'products': [],
+      });
     }
+    
+    _isLoadingResponse = false;
+    notifyListeners();
   }
 
   void clearChat() {

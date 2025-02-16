@@ -4,8 +4,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/cart_provider.dart';
-import 'pages/chat_page.dart';
+import 'services/auth_service.dart'; // Add this line to import AuthService
 import 'firebase_options.dart';
+import 'pages/chat_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,9 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        Provider<AuthService>(
+          create: (_) => AuthService(),
+        ),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
