@@ -41,17 +41,18 @@ class FirebaseService {
           .limit(5)
           .get();
 
+      print('Found ${querySnapshot.docs.length} matching products'); // Debug print
+
       final products = querySnapshot.docs.map((doc) {
         final data = doc.data();
-        print('Raw product data: $data'); // Debug print
+        print('Product data: $data'); // Debug print
         
         return {
           'id': doc.id,
           'name': data['name'] ?? 'Unknown Product',
-          'price': data['price'] ?? 0.0,
+          'price': (data['price'] ?? 0.0).toDouble(),
           'unit': data['unit'] ?? 'unit',
           'imageUrl': data['imageUrl'] ?? '',
-          // Add any other fields you need
         };
       }).toList();
 
@@ -175,30 +176,91 @@ class FirebaseService {
   }
 
   Future<void> updateProduct(String id, Map<String, dynamic> data, File? imageFile) async {
-    if (imageFile != null) {
-      final imageUrl = await _uploadImage(imageFile, 'products/$id');
-      data['imageUrl'] = imageUrl;
+    try {
+      String? imageUrl;
+      if (imageFile != null) {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('products')
+            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putFile(imageFile);
+        imageUrl = await ref.getDownloadURL();
+        data['imageUrl'] = imageUrl;
+      }
+
+      // Extract variants from data
+      final variants = List<Map<String, dynamic>>.from(data.remove('variants') ?? []);
+
+      data['searchTerms'] = _generateSearchTerms(data['name']);
+      data['updatedAt'] = FieldValue.serverTimestamp();
+
+      // Update product document
+      await _firestore.collection('products').doc(id).update(data);
+
+      // Update variants subcollection
+      final batch = _firestore.batch();
+      final variantsRef = _firestore.collection('products').doc(id).collection('variants');
+      
+      // Delete existing variants
+      final existingVariants = await variantsRef.get();
+      for (var doc in existingVariants.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Add new variants
+      for (var variant in variants) {
+        final variantRef = variantsRef.doc();
+        batch.set(variantRef, {
+          ...variant,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error updating product: $e');
+      rethrow;
     }
-    
-    await _firestore.collection('products').doc(id).update({
-      ...data,
-      'searchTerms': _generateSearchTerms(data['name']),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
   }
 
-  Future<void> addProduct(Map<String, dynamic> data, [File? imageFile]) async {
-    final searchTerms = _generateSearchTerms(data['name']);
-    
-    final doc = await _firestore.collection('products').add({
-      ...data,
-      'searchTerms': searchTerms,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  Future<void> addProduct(Map<String, dynamic> data, File? imageFile) async {
+    try {
+      String? imageUrl;
+      if (imageFile != null) {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('products')
+            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putFile(imageFile);
+        imageUrl = await ref.getDownloadURL();
+      }
 
-    if (imageFile != null) {
-      final imageUrl = await _uploadImage(imageFile, 'products/${doc.id}');
-      await doc.update({'imageUrl': imageUrl});
+      // Extract variants from data
+      final variants = List<Map<String, dynamic>>.from(data.remove('variants') ?? []);
+
+      final productData = {
+        ...data,
+        'imageUrl': imageUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'searchTerms': _generateSearchTerms(data['name']),
+        'isActive': true,
+      };
+
+      // Add product document
+      final docRef = await _firestore.collection('products').add(productData);
+
+      // Add variants as subcollection
+      final batch = _firestore.batch();
+      for (var variant in variants) {
+        final variantRef = docRef.collection('variants').doc();
+        batch.set(variantRef, {
+          ...variant,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error adding product: $e');
+      rethrow;
     }
   }
 
@@ -208,14 +270,36 @@ class FirebaseService {
     return await ref.getDownloadURL();
   }
 
-  Stream<List<Map<String, dynamic>>> streamProducts() {
+  Stream<List<ProductModel>> streamProducts() {
     return _firestore
         .collection('products')
-        .orderBy('name')
+        .where('isActive', isEqualTo: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => {'id': doc.id, ...doc.data()})
-            .toList());
+        .asyncMap((snapshot) async {
+      final products = <ProductModel>[];
+      
+      for (var doc in snapshot.docs) {
+        // Get variants subcollection
+        final variantsSnapshot = await doc.reference
+            .collection('variants')
+            .orderBy('createdAt', descending: true)
+            .get();
+            
+        final variants = variantsSnapshot.docs
+            .map((vDoc) => ProductVariant.fromJson({
+                  'id': vDoc.id,
+                  ...vDoc.data(),
+                }))
+            .toList();
+
+        products.add(ProductModel.fromMap(doc.id, {
+          ...doc.data(),
+          'variants': variants,
+        }));
+      }
+      
+      return products;
+    });
   }
 
   // Vendor Methods
@@ -1020,16 +1104,516 @@ class FirebaseService {
     await batch.commit();
   }
 
-  Future<void> deleteProduct(String productId) async {
+  Future<void> deleteProduct(String id) async {
     try {
-      final doc = await _firestore.collection('products').doc(productId).get();
+      final doc = await _firestore.collection('products').doc(id).get();
       if (doc.exists && doc.data()?['imageUrl'] != null) {
         await FirebaseStorage.instance.refFromURL(doc.data()!['imageUrl']).delete();
       }
-      await _firestore.collection('products').doc(productId).delete();
+
+      // Delete variants subcollection
+      final variantsSnapshot = await doc.reference.collection('variants').get();
+      final batch = _firestore.batch();
+      for (var variantDoc in variantsSnapshot.docs) {
+        batch.delete(variantDoc.reference);
+      }
+      
+      // Delete product document
+      batch.delete(doc.reference);
+      await batch.commit();
     } catch (e) {
       print('Error deleting product: $e');
       rethrow;
+    }
+  }
+
+  Stream<Map<String, dynamic>> getAdminOverview(String timeRange) {
+    final now = DateTime.now();
+    DateTime startDate;
+
+    switch (timeRange) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 7));
+    }
+
+    return _firestore
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: startDate)
+        .snapshots()
+        .asyncMap((ordersSnapshot) async {
+      // Get vendors count
+      final vendorsSnapshot = await _firestore
+          .collection('vendors')
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      // Calculate totals
+      double totalRevenue = 0;
+      int pendingDeliveries = 0;
+
+      for (var doc in ordersSnapshot.docs) {
+        final order = OrderModel.fromMap(doc.id, doc.data());
+        totalRevenue += order.total;
+        if (order.status == OrderStatus.processing) {
+          pendingDeliveries++;
+        }
+      }
+
+      // Calculate trends (simplified)
+      final previousPeriod = await _getPreviousPeriodData(timeRange);
+
+      return {
+        'totalOrders': ordersSnapshot.docs.length,
+        'totalRevenue': totalRevenue,
+        'activeVendors': vendorsSnapshot.docs.length,
+        'pendingDeliveries': pendingDeliveries,
+        'ordersTrend': _calculateTrend(
+          ordersSnapshot.docs.length,
+          previousPeriod['orders'],
+        ),
+        'revenueTrend': _calculateTrend(
+          totalRevenue,
+          previousPeriod['revenue'],
+        ),
+        'vendorsTrend': _calculateTrend(
+          vendorsSnapshot.docs.length,
+          previousPeriod['vendors'],
+        ),
+      };
+    });
+  }
+
+  Stream<List<OrderModel>> getRecentOrders() {
+    return _firestore
+        .collection('orders')
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => OrderModel.fromMap(doc.id, doc.data()))
+            .toList());
+  }
+
+  Future<Map<String, dynamic>> _getPreviousPeriodData(String timeRange) async {
+    final now = DateTime.now();
+    DateTime startDate;
+    DateTime endDate;
+
+    switch (timeRange) {
+      case 'week':
+        endDate = now.subtract(Duration(days: 7));
+        startDate = endDate.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        endDate = DateTime(now.year, now.month, 1);
+        startDate = DateTime(now.year, now.month - 1, 1);
+        break;
+      case 'year':
+        endDate = DateTime(now.year, 1, 1);
+        startDate = DateTime(now.year - 1, 1, 1);
+        break;
+      default:
+        endDate = now.subtract(Duration(days: 7));
+        startDate = endDate.subtract(Duration(days: 7));
+    }
+
+    final ordersSnapshot = await _firestore
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: startDate)
+        .where('createdAt', isLessThan: endDate)
+        .get();
+
+    final vendorsSnapshot = await _firestore
+        .collection('vendors')
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    double totalRevenue = 0;
+    for (var doc in ordersSnapshot.docs) {
+      final order = OrderModel.fromMap(doc.id, doc.data());
+      totalRevenue += order.total;
+    }
+
+    return {
+      'orders': ordersSnapshot.docs.length,
+      'revenue': totalRevenue,
+      'vendors': vendorsSnapshot.docs.length,
+    };
+  }
+
+  double _calculateTrend(num current, num previous) {
+    if (previous == 0) return 0;
+    return ((current - previous) / previous * 100).roundToDouble();
+  }
+
+  Stream<List<VendorModel>> streamVendors(String filter) {
+    Query query = _firestore.collection('vendors');
+    
+    switch (filter) {
+      case 'active':
+        query = query.where('isActive', isEqualTo: true);
+        break;
+      case 'inactive':
+        query = query.where('isActive', isEqualTo: false);
+        break;
+    }
+    
+    return query
+        .orderBy('name')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => VendorModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  Future<void> updateVendorStatus(String vendorId, bool isActive) async {
+    try {
+      await _firestore.collection('vendors').doc(vendorId).update({
+        'isActive': isActive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error updating vendor status: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteVendor(String vendorId) async {
+    try {
+      // Get vendor data to update user role
+      final vendorDoc = await _firestore.collection('vendors').doc(vendorId).get();
+      final userId = vendorDoc.data()?['userId'];
+
+      // Delete vendor document
+      await _firestore.collection('vendors').doc(vendorId).delete();
+
+      // Update user role if userId exists
+      if (userId != null) {
+        await _firestore.collection('users').doc(userId).update({
+          'role': 'user',
+          'vendorId': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      print('Error deleting vendor: $e');
+      rethrow;
+    }
+  }
+
+  Stream<List<OrderModel>> getDeliveryOrders(String status) {
+    Query query = _firestore.collection('orders');
+    
+    switch (status) {
+      case 'ready':
+        query = query.where('status', isEqualTo: OrderStatus.ready.toString());
+        break;
+      case 'delivering':
+        query = query.where('status', isEqualTo: OrderStatus.delivering.toString());
+        break;
+      case 'delivered':
+        query = query.where('status', isEqualTo: OrderStatus.delivered.toString());
+        break;
+    }
+    
+    return query
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  Stream<Map<String, dynamic>> getAnalyticsData(String timeRange, String metric) {
+    final now = DateTime.now();
+    DateTime startDate;
+
+    switch (timeRange) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 7));
+    }
+
+    return _firestore
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: startDate)
+        .snapshots()
+        .asyncMap((snapshot) async {
+      final chartData = <Map<String, dynamic>>[];
+      final labels = <String>[];
+      double totalValue = 0;
+
+      // Group data by date
+      final groupedData = <DateTime, double>{};
+      for (var doc in snapshot.docs) {
+        final order = OrderModel.fromMap(doc.id, doc.data());
+        final date = DateTime(
+          order.createdAt.year,
+          order.createdAt.month,
+          timeRange == 'year' ? 1 : order.createdAt.day,
+        );
+        
+        switch (metric) {
+          case 'revenue':
+            groupedData[date] = (groupedData[date] ?? 0) + order.total;
+            break;
+          case 'orders':
+            groupedData[date] = (groupedData[date] ?? 0) + 1;
+            break;
+          case 'vendors':
+            groupedData[date] = (groupedData[date] ?? 0) + order.vendorIds.length;
+            break;
+        }
+      }
+
+      // Sort dates and create chart data
+      final sortedDates = groupedData.keys.toList()..sort();
+      for (var date in sortedDates) {
+        chartData.add({
+          'x': chartData.length,
+          'y': groupedData[date]!,
+        });
+        
+        labels.add(timeRange == 'year'
+            ? DateFormat('MMM').format(date)
+            : DateFormat('MMM d').format(date));
+        
+        totalValue += groupedData[date]!;
+      }
+
+      return {
+        'chartData': chartData,
+        'labels': labels,
+        'total': totalValue,
+      };
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> getTopVendors(String timeRange) {
+    final now = DateTime.now();
+    DateTime startDate;
+
+    switch (timeRange) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 7));
+    }
+
+    return _firestore
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: startDate)
+        .where('status', isEqualTo: OrderStatus.completed.toString())
+        .snapshots()
+        .asyncMap((snapshot) async {
+      // Calculate vendor performance
+      final vendorStats = <String, Map<String, dynamic>>{};
+      
+      for (var doc in snapshot.docs) {
+        final order = OrderModel.fromMap(doc.id, doc.data());
+        for (var vendorId in order.vendorIds) {
+          if (!vendorStats.containsKey(vendorId)) {
+            final vendorDoc = await _firestore.collection('vendors').doc(vendorId).get();
+            vendorStats[vendorId] = {
+              'name': vendorDoc.data()?['name'] ?? 'Unknown Vendor',
+              'revenue': 0.0,
+              'ordersCompleted': 0,
+              'totalOrders': 0,
+            };
+          }
+          
+          vendorStats[vendorId]!['totalOrders'] = 
+              (vendorStats[vendorId]!['totalOrders'] as int) + 1;
+              
+          if (order.status == OrderStatus.completed) {
+            vendorStats[vendorId]!['ordersCompleted'] = 
+                (vendorStats[vendorId]!['ordersCompleted'] as int) + 1;
+            vendorStats[vendorId]!['revenue'] = 
+                (vendorStats[vendorId]!['revenue'] as double) + order.total;
+          }
+        }
+      }
+
+      // Calculate completion rates and format for display
+      final vendorList = vendorStats.entries.map((e) {
+        final stats = e.value;
+        final completionRate = stats['totalOrders'] > 0
+            ? (stats['ordersCompleted'] / stats['totalOrders'] * 100).round()
+            : 0;
+            
+        return {
+          'id': e.key,
+          'name': stats['name'],
+          'revenue': stats['revenue'],
+          'ordersCompleted': stats['ordersCompleted'],
+          'completionRate': completionRate,
+        };
+      }).toList();
+
+      // Sort by revenue
+      vendorList.sort((a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double));
+      
+      return vendorList.take(5).toList();
+    });
+  }
+
+  Stream<Map<String, dynamic>> getMarketPerformance(String timeRange) {
+    final now = DateTime.now();
+    DateTime startDate;
+
+    switch (timeRange) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 7));
+    }
+
+    return _firestore
+        .collection('orders')
+        .where('createdAt', isGreaterThanOrEqualTo: startDate)
+        .snapshots()
+        .map((snapshot) {
+      final marketStats = {
+        'mile12Revenue': 0.0,
+        'mile12Orders': 0,
+        'oyingboRevenue': 0.0,
+        'oyingboOrders': 0,
+        'karaRevenue': 0.0,
+        'karaOrders': 0,
+      };
+
+      for (var doc in snapshot.docs) {
+        final order = OrderModel.fromMap(doc.id, doc.data());
+        
+        switch (order.market.toLowerCase()) {
+          case 'mile 12':
+            marketStats['mile12Revenue'] = 
+                (marketStats['mile12Revenue'] as double) + order.total;
+            marketStats['mile12Orders'] = 
+                (marketStats['mile12Orders'] as int) + 1;
+            break;
+          case 'oyingbo':
+            marketStats['oyingboRevenue'] = 
+                (marketStats['oyingboRevenue'] as double) + order.total;
+            marketStats['oyingboOrders'] = 
+                (marketStats['oyingboOrders'] as int) + 1;
+            break;
+          case 'kara':
+            marketStats['karaRevenue'] = 
+                (marketStats['karaRevenue'] as double) + order.total;
+            marketStats['karaOrders'] = 
+                (marketStats['karaOrders'] as int) + 1;
+            break;
+        }
+      }
+
+      return marketStats;
+    });
+  }
+
+  // Add this method to fetch product with variants for chat context
+  Future<Map<String, dynamic>> getProductWithVariants(String productId) async {
+    try {
+      final doc = await _firestore.collection('products').doc(productId).get();
+      if (!doc.exists) {
+        throw 'Product not found';
+      }
+
+      final variantsSnapshot = await doc.reference.collection('variants').get();
+      final variants = variantsSnapshot.docs
+          .map((vDoc) => ProductVariant.fromJson({
+                'id': vDoc.id,
+                ...vDoc.data(),
+              }))
+          .toList();
+
+      final product = ProductModel.fromMap(doc.id, {
+        ...doc.data()!,
+        'variants': variants,
+      });
+
+      return product.toChatContext();
+    } catch (e) {
+      print('Error getting product with variants: $e');
+      rethrow;
+    }
+  }
+
+  // Create product with variants
+  Future<void> createProduct(ProductModel product, List<ProductVariant> variants) async {
+    try {
+      final docRef = await _firestore.collection('products').add(product.toJson());
+      
+      final batch = _firestore.batch();
+      for (var variant in variants) {
+        final variantRef = docRef.collection('variants').doc();
+        batch.set(variantRef, variant.toJson());
+      }
+      await batch.commit();
+    } catch (e) {
+      throw FirebaseException(
+        plugin: 'firestore',
+        message: 'Failed to create product: $e',
+      );
+    }
+  }
+
+  // Get product with variants
+  Future<ProductModel> getProduct(String productId) async {
+    try {
+      final doc = await _firestore.collection('products').doc(productId).get();
+      if (!doc.exists) {
+        throw 'Product not found';
+      }
+
+      final variantsSnapshot = await doc.reference.collection('variants').get();
+      final variants = variantsSnapshot.docs
+          .map((doc) => ProductVariant.fromJson({
+                'id': doc.id,
+                ...doc.data(),
+              }))
+          .toList();
+
+      return ProductModel.fromFirestore(doc.id, {
+        ...doc.data()!,
+        'variants': variants,
+      });
+    } catch (e) {
+      throw FirebaseException(
+        plugin: 'firestore',
+        message: 'Failed to get product: $e',
+      );
     }
   }
 }

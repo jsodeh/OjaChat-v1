@@ -45,11 +45,8 @@ class CartPage extends StatelessWidget {
                     return Card(
                       child: ListTile(
                         title: Text(item.name),
-                        subtitle: Text('Amount: ₦${item.amount}'),
-                        trailing: IconButton(
-                          icon: Icon(Icons.delete_outline),
-                          onPressed: () => cartProvider.removeItem(item),
-                        ),
+                        subtitle: Text('Quantity: ${item.quantity}'),
+                        trailing: Text('₦${item.price * item.quantity}'),
                       ),
                     );
                   },

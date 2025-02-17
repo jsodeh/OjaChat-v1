@@ -119,9 +119,13 @@ class _VendorOnboardingPageState extends State<VendorOnboardingPage> {
       final vendor = VendorModel(
         id: '', // Will be set by Firestore
         userId: user.uid,
+        name: user.displayName ?? 'Unknown',
+        email: user.email ?? '',
+        phone: '', // You might want to add a phone input field
         market: _selectedMarket!,
         categories: _selectedCategories,
         products: _selectedProducts,
+        isActive: true,
         createdAt: DateTime.now(),
       );
 

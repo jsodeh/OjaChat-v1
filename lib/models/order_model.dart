@@ -1,4 +1,6 @@
-import 'cart_item.dart';
+import 'package:json_annotation/json_annotation.dart';
+
+part 'order_model.g.dart';
 
 enum OrderStatus {
   pending,    // Initial state when order is created
@@ -14,115 +16,122 @@ enum OrderStatus {
   delivered,  // Order has been delivered
 }
 
+@JsonSerializable()
 class OrderModel {
   final String id;
-  final String userId;
-  final String market;
-  final List<OrderItem> items;
-  final OrderStatus status;
-  final DateTime createdAt;
-  final double total;
-  final List<String> vendorIds;
-  final double totalAmount;
-  final Map<String, dynamic>? metadata;
   final String customerName;
+  final String customerId;
   final String phoneNumber;
   final String deliveryAddress;
+  final List<OrderItem> items;
+  final double total;
+  final OrderStatus status;
+  final DateTime createdAt;
+  final String market;
+  final List<String> vendorIds;
+  final bool paidOut;
+  final List<String>? paidVendors;
 
-  OrderModel({
+  const OrderModel({
     required this.id,
-    required this.userId,
-    required this.market,
-    required this.items,
-    required this.status,
-    required this.createdAt,
-    required this.total,
-    required this.vendorIds,
-    required this.totalAmount,
-    this.metadata,
     required this.customerName,
+    required this.customerId,
     required this.phoneNumber,
     required this.deliveryAddress,
+    required this.items,
+    required this.total,
+    required this.status,
+    required this.createdAt,
+    required this.market,
+    required this.vendorIds,
+    this.paidOut = false,
+    this.paidVendors,
   });
-
-  Map<String, dynamic> toMap() => {
-    'userId': userId,
-    'market': market,
-    'items': items.map((item) => item.toMap()).toList(),
-    'status': status.toString(),
-    'createdAt': createdAt.toIso8601String(),
-    'total': total,
-    'vendorIds': vendorIds,
-    'totalAmount': totalAmount,
-    'metadata': metadata,
-    'customerName': customerName,
-    'phoneNumber': phoneNumber,
-    'deliveryAddress': deliveryAddress,
-  };
 
   factory OrderModel.fromMap(String id, Map<String, dynamic> map) {
     return OrderModel(
       id: id,
-      userId: map['userId'],
-      market: map['market'],
-      items: (map['items'] as List)
-          .map((item) => OrderItem.fromMap(item))
-          .toList(),
-      status: OrderStatus.values.firstWhere(
-        (e) => e.toString() == map['status'],
-      ),
-      createdAt: DateTime.parse(map['createdAt']),
-      total: map['total'],
-      vendorIds: List<String>.from(map['vendorIds']),
-      totalAmount: map['totalAmount'],
-      metadata: map['metadata'],
       customerName: map['customerName'] ?? '',
+      customerId: map['customerId'] ?? '',
       phoneNumber: map['phoneNumber'] ?? '',
       deliveryAddress: map['deliveryAddress'] ?? '',
-    );
-  }
-}
-
-class OrderItem {
-  final String id;
-  final String productId;
-  final String name;
-  final double quantity;
-  final String unit;
-  final double price;
-  final List<String>? confirmedBy;
-
-  OrderItem({
-    required this.id,
-    required this.productId,
-    required this.name,
-    required this.quantity,
-    required this.unit,
-    required this.price,
-    this.confirmedBy,
-  });
-
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'productId': productId,
-    'name': name,
-    'quantity': quantity,
-    'unit': unit,
-    'price': price,
-    'confirmedBy': confirmedBy,
-  };
-
-  factory OrderItem.fromMap(Map<String, dynamic> map) {
-    return OrderItem(
-      id: map['id'] ?? '',
-      productId: map['productId'],
-      name: map['name'],
-      quantity: map['quantity'].toDouble(),
-      unit: map['unit'],
-      price: map['price'].toDouble(),
-      confirmedBy: map['confirmedBy'] != null 
-          ? List<String>.from(map['confirmedBy'])
+      items: (map['items'] as List)
+          .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
+          .toList(),
+      total: (map['total'] as num).toDouble(),
+      status: OrderStatus.values.firstWhere(
+        (e) => e.toString() == map['status'],
+        orElse: () => OrderStatus.pending,
+      ),
+      createdAt: DateTime.parse(map['createdAt'] as String),
+      market: map['market'] ?? '',
+      vendorIds: List<String>.from(map['vendorIds'] ?? []),
+      paidOut: map['paidOut'] ?? false,
+      paidVendors: map['paidVendors'] != null 
+          ? List<String>.from(map['paidVendors'])
           : null,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'customerName': customerName,
+      'customerId': customerId,
+      'phoneNumber': phoneNumber,
+      'deliveryAddress': deliveryAddress,
+      'items': items.map((item) => item.toMap()).toList(),
+      'total': total,
+      'status': status.toString(),
+      'createdAt': createdAt.toIso8601String(),
+      'market': market,
+      'vendorIds': vendorIds,
+      'paidOut': paidOut,
+      'paidVendors': paidVendors,
+    };
+  }
+
+  double get totalAmount => items.fold(
+    0, 
+    (sum, item) => sum + (item.price * item.quantity)
+  );
+}
+
+@JsonSerializable()
+class OrderItem {
+  final String productId;
+  final String name;
+  final double price;
+  final int quantity;
+  final String? unit;
+  final List<String>? confirmedBy;
+
+  const OrderItem({
+    required this.productId,
+    required this.name,
+    required this.price,
+    required this.quantity,
+    this.unit,
+    this.confirmedBy,
+  });
+
+  factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
+    productId: json['productId'] as String,
+    name: json['name'] as String,
+    price: (json['price'] as num).toDouble(),
+    quantity: json['quantity'] as int,
+    unit: json['unit'] as String?,
+    confirmedBy: (json['confirmedBy'] as List<dynamic>?)?.map((e) => e as String).toList(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'productId': productId,
+    'name': name,
+    'price': price,
+    'quantity': quantity,
+    'unit': unit,
+    'confirmedBy': confirmedBy,
+  };
+
+  factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem.fromJson(map);
+  Map<String, dynamic> toMap() => toJson();
 } 

@@ -1,31 +1,65 @@
 class CartItem {
+  final String productId;
   final String name;
-  final double amount;
-  double? price;
-  String? unit;
+  final double price;
+  final int quantity;
+  final String? unit;
+  final String? variantId;
+  final String? variantName;
+
+  double get amount => price * quantity;
 
   CartItem({
+    required this.productId,
     required this.name,
-    required this.amount,
-    this.price,
+    required this.price,
+    required this.quantity,
     this.unit,
+    this.variantId,
+    this.variantName,
   });
 
   Map<String, dynamic> toMap() {
     return {
-      'name': name,
-      'amount': amount,
+      'productId': productId,
+      'name': variantName != null ? '$name - $variantName' : name,
       'price': price,
+      'quantity': quantity,
       'unit': unit,
+      'variantId': variantId,
+      'variantName': variantName,
     };
+  }
+
+  CartItem copyWith({
+    String? productId,
+    String? name,
+    double? price,
+    int? quantity,
+    String? unit,
+    String? variantId,
+    String? variantName,
+  }) {
+    return CartItem(
+      productId: productId ?? this.productId,
+      name: name ?? this.name,
+      price: price ?? this.price,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
+      variantId: variantId ?? this.variantId,
+      variantName: variantName ?? this.variantName,
+    );
   }
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
     return CartItem(
+      productId: map['productId'] as String,
       name: map['name'] as String,
-      amount: map['amount'] as double,
-      price: map['price'] as double?,
+      price: map['price'] as double,
+      quantity: map['quantity'] as int,
       unit: map['unit'] as String?,
+      variantId: map['variantId'] as String?,
+      variantName: map['variantName'] as String?,
     );
   }
 
@@ -44,8 +78,13 @@ class CartItem {
         amount *= 1000;
       }
       return CartItem(
+        productId: '',
         name: name,
-        amount: amount,
+        price: amount,
+        quantity: 1,
+        unit: match.group(3) == 'k' ? 'kg' : null,
+        variantId: null,
+        variantName: null,
       );
     }).toList();
   }

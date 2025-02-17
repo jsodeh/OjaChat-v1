@@ -14,6 +14,7 @@ import '../pages/admin/product_management_page.dart';
 import '../models/user_role.dart';
 import '../styles/app_theme.dart';
 import '../widgets/hover_effect.dart';
+import '../pages/profile_page.dart';
 
 class ChatPage extends StatefulWidget {
   @override
@@ -22,7 +23,6 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
-  final ScrollController _updateScrollController = ScrollController();
   String selectedMarket = 'Mile 12';
   final List<String> hintTexts = [
     'Buy foodstuff from Mile 12 Market',
@@ -44,17 +44,20 @@ class _ChatPageState extends State<ChatPage> {
   // Add state variable to track input
   String _inputText = '';
 
+  // Add this variable to control animation duration
+  static const updateAnimationDuration = Duration(seconds: 5);
+  static const updatePauseDuration = Duration(seconds: 3);
+
   @override
   void initState() {
     super.initState();
-    // Add listener to controller
     _controller.addListener(() {
       setState(() {
         _inputText = _controller.text;
       });
     });
     _startHintAnimation();
-    _startUpdateAnimation(); // Add this
+    _startUpdateAnimation();
   }
 
   void _startHintAnimation() {
@@ -68,36 +71,15 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
-  // Modify _startUpdateAnimation method
   void _startUpdateAnimation() {
     if (!mounted) return;
 
-    // Reset scroll position first
-    if (_updateScrollController.hasClients) {
-      _updateScrollController.jumpTo(0);
-    }
-
-    // Add slight delay before starting scroll
-    Future.delayed(Duration(milliseconds: 500), () {
-      if (_updateScrollController.hasClients && mounted) {
-        _updateScrollController.animateTo(
-          _updateScrollController.position.maxScrollExtent,
-          duration: Duration(seconds: 5),
-          curve: Curves.linear,
-        ).then((_) {
-          // After scrolling completes, wait a bit then show next message
-          Future.delayed(Duration(seconds: 2), () {
-            if (mounted) {
-              setState(() {
-                currentUpdateIndex = (currentUpdateIndex + 1) % updateMessages.length;
-              });
-              _startUpdateAnimation();
-            }
-          });
+    Future.delayed(updateAnimationDuration + updatePauseDuration, () {
+      if (mounted) {
+        setState(() {
+          currentUpdateIndex = (currentUpdateIndex + 1) % updateMessages.length;
         });
-      } else {
-        // If no clients yet, try again shortly
-        Future.delayed(Duration(milliseconds: 100), _startUpdateAnimation);
+        _startUpdateAnimation();
       }
     });
   }
@@ -116,25 +98,9 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildBody(ChatProvider chatProvider) {
     return AnimatedSwitcher(
       duration: Duration(milliseconds: 300),
-      child: chatProvider.isLoadingResponse
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation(Colors.white70),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Getting market prices...',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            )
-          : chatProvider.messageHistory.isEmpty
-              ? _buildLovableLikeWelcome()
-              : _buildChatView(chatProvider),
+      child: chatProvider.messageHistory.isEmpty
+          ? _buildLovableLikeWelcome()
+          : _buildChatView(chatProvider),
     );
   }
 
@@ -161,52 +127,8 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
                 
-                // New badge
-                Container(
-                  constraints: BoxConstraints(maxWidth: 320),
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.campaign, size: 16, color: Colors.white70),
-                      ),
-                      SizedBox(width: 12),
-                      Flexible(
-                        child: AnimatedSwitcher(
-                          duration: Duration(milliseconds: 500),
-                          child: SingleChildScrollView(
-                            key: ValueKey<int>(currentUpdateIndex),
-                            controller: _updateScrollController,
-                            scrollDirection: Axis.horizontal,
-                            physics: NeverScrollableScrollPhysics(), // Prevent manual scrolling
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(minWidth: 200), // Ensure minimum width for scrolling
-                              child: Text(
-                                updateMessages[currentUpdateIndex],
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.visible,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Replace the old updates container with the new widget
+                _buildUpdatesWidget(),
                 SizedBox(height: 32),
 
                 // Heading
@@ -233,6 +155,53 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdatesWidget() {
+    return Container(
+      constraints: BoxConstraints(maxWidth: 320),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.campaign, size: 16, color: Colors.white70),
+          ),
+          SizedBox(width: 12),
+          Flexible(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 500),
+              child: SingleChildScrollView(
+                key: ValueKey<int>(currentUpdateIndex),
+                scrollDirection: Axis.horizontal,
+                child: Container(
+                  constraints: BoxConstraints(maxHeight: 20), // Force single line
+                  child: Text(
+                    updateMessages[currentUpdateIndex],
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                    overflow: TextOverflow.visible,
+                    softWrap: false, // Prevent wrapping to next line
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -527,59 +496,72 @@ class _ChatPageState extends State<ChatPage> {
         child: Icon(Icons.person),
       ),
       itemBuilder: (_) => [
-        PopupMenuItem(child: Text('Profile')),
+        PopupMenuItem(
+          child: Text('Profile'),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ProfilePage()),
+          ),
+        ),
         PopupMenuItem(child: Text('Settings')),
-        PopupMenuItem(child: Text('Logout')),
+        PopupMenuItem(
+          child: Text('Logout'),
+          onTap: () async {
+            await context.read<AuthService>().signOut();
+          },
+        ),
       ],
     );
   }
 
   void _showMobileMenu(BuildContext context) {
-  final authService = Provider.of<AuthService>(context, listen: false);
-  
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: AppTheme.darkBackground,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) => Provider<AuthService>.value(
-      value: authService, // Pass the existing AuthService
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.person_outline, color: Colors.white70),
-              title: Text('Profile', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                // Handle profile action
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings_outlined, color: Colors.white70),
-              title: Text('Settings', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                // Handle settings action
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.logout_outlined, color: Colors.white70),
-              title: Text('Sign Out', style: TextStyle(color: Colors.white)),
-              onTap: () async {
-                await authService.signOut();
-                Navigator.pop(context);
-              },
-            ),
-          ],
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.darkBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Provider<AuthService>.value(
+        value: authService,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.person_outline, color: Colors.white70),
+                title: Text('Profile', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ProfilePage()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.settings_outlined, color: Colors.white70),
+                title: Text('Settings', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.logout_outlined, color: Colors.white70),
+                title: Text('Sign Out', style: TextStyle(color: Colors.white)),
+                onTap: () async {
+                  await authService.signOut();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildMobileMenuItem(IconData icon, String text, {VoidCallback? onTap}) {
     return ListTile(
@@ -646,7 +628,6 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void dispose() {
     _controller.removeListener(() {});
-    _updateScrollController.dispose();
     _controller.dispose();
     super.dispose();
   }

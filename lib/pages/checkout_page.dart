@@ -82,8 +82,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
             SizedBox(height: 16),
             ...cartProvider.items.map((item) => ListTile(
               title: Text(item.name),
-              subtitle: Text('Amount: ₦${item.amount}'),
-              trailing: Text('₦${item.price ?? 0}'),
+              subtitle: Text('Quantity: ${item.quantity}'),
+              trailing: Text('₦${item.price * item.quantity}'),
             )),
             Divider(height: 32),
             Row(

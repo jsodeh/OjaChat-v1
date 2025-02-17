@@ -28,26 +28,27 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cloud_firestore: ^4.0.0
-  firebase_core: ^2.0.0
-  firebase_auth: ^4.0.0
+  cloud_firestore: ^4.3.1
+  firebase_core: ^2.4.1
+  firebase_auth: ^4.2.5
+  firebase_storage: ^11.0.10
+  json_annotation: ^4.8.1
+  provider: ^6.0.5
+  http: ^0.13.5
+  image_picker: ^0.8.6
+  intl: ^0.17.0
   cloud_functions: ^4.6.0
-  firebase_storage: ^11.6.0
   firebase_messaging: ^14.7.20
   flutter_local_notifications: ^16.3.2
   google_sign_in: ^6.1.6
-  http: ^1.0.0
-  intl: ^0.18.1
-  provider: ^6.0.0
   fl_chart: ^0.66.2
   uuid: ^4.3.3
-  json_annotation: ^4.6.0
   flutter_dotenv: ^5.0.2
-  image_picker: ^1.0.7
   card_swiper: ^3.0.1
   video_player: ^2.8.2
   shimmer: ^3.0.0
   font_awesome_flutter: ^10.1.0
+  get_it: ^7.2.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -63,8 +64,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  build_runner: ^2.3.0
-  json_serializable: ^6.1.5
+  build_runner: ^2.3.3
+  json_serializable: ^6.6.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -87,6 +88,7 @@ flutter:
     - assets/Screenshot 2025-02-09 at 17.43.00.png
     - assets/OjaChat Logo.png  # Fixed the formatting
     - assets/Lovable Desktop view logged in.png
+    - assets/updat.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
